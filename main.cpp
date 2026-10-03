@@ -1,7 +1,10 @@
+#include "model.h"
 #include "tgaimage.h"
 #include <cmath>
-#include <ctime>
 #include <utility>
+
+constexpr int width  = 800;
+constexpr int height = 800;
 
 // ATTENTION! BGRA order
 constexpr TGAColor white  = {255, 255, 255, 255};
@@ -10,7 +13,7 @@ constexpr TGAColor green  = {  0, 255,   0, 255};
 constexpr TGAColor red    = {  0,   0, 255, 255};
 constexpr TGAColor yellow = {  0, 200, 255, 255};
 
-void drawLine(int ax, int ay, int bx, int by, TGAImage& framebuffer, const TGAColor& color) {
+void line(int ax, int ay, int bx, int by, TGAImage& framebuffer, const TGAColor& color) {
     // If the line is steep (more vertical than horizontal), transpose the line
     bool steep = std::abs(ax - bx) < std::abs(by - ay);
     if(steep) {
@@ -40,19 +43,37 @@ void drawLine(int ax, int ay, int bx, int by, TGAImage& framebuffer, const TGACo
     }
 }
 
-int main() {
-    constexpr int width  = 64;
-    constexpr int height = 64;
-    TGAImage framebuffer{width, height, TGAImage::RGB};
+std::tuple<int, int> project(vec3 v) {
+    // (x, y) is an orthogonal projection of the vector (x,y,z)
+    // The input models are scaled to fit in [-1, 1]^3
+    // we shift and scale the vector to fit the entire screen
+    return {
+        (v.x + 1) * width  / 2,
+        (v.y + 1) * height / 2
+    };
+}
 
-    std::srand(std::time({}));
-    auto rand_int = []{ return static_cast<uint8_t>(rand()%255); };
-    for (int i=0; i<(1<<24); i++) {
-        int ax = rand()%width, ay = rand()%height;
-        int bx = rand()%width, by = rand()%height;
-        drawLine(ax, ay, bx, by, framebuffer, { rand_int(), rand_int(), rand_int(), rand_int() });
+void render(Model& model, TGAImage& framebuffer) {
+    for(int i{}; i < model.numFaces(); i++) {
+        auto [ax, ay] = project(model.vert(i, 0));
+        auto [bx, by] = project(model.vert(i, 1));
+        auto [cx, cy] = project(model.vert(i, 2));
+
+        line(ax, ay, bx, by, framebuffer, red);
+        line(bx, by, cx, cy, framebuffer, red);
+        line(ax, ay, cx, cy, framebuffer, red);
     }
+    for(int i{}; i < model.numVerts(); i++) {
+        auto [ax, ay] = project(model.vert(i));
+        framebuffer.set(ax, ay, white);
+    }
+}
 
+int main() {
+    TGAImage framebuffer{width, height, TGAImage::RGB};
+    Model diabloPose{"./obj/diablo3_pose/diablo3_pose.obj"};
+
+    render(diabloPose, framebuffer);
     framebuffer.write_tga_file("./output/framebuffer.tga");
 
     return 0;

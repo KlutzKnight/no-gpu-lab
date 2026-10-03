@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.26)
 
-# if the generator is single config and build type is not defined
+# if the generator is single config and build type is not defined,
 # default to release build
 get_property(is_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 if(NOT is_multi_config AND NOT (CMAKE_BUILD_TYPE OR DEFINED ENV{CMAKE_BUILD_TYPE}))
@@ -17,7 +17,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-
-set(SOURCES main.cpp tgaimage.cpp)
+set(SOURCES main.cpp tgaimage.cpp model.cpp)
 
 add_executable(${PROJECT_NAME} ${SOURCES})
