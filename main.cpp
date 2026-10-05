@@ -1,10 +1,12 @@
+#include "model.h"
 #include "tgaimage.h"
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <utility>
 
-constexpr int width  = 128;
-constexpr int height = 128;
+constexpr int width  = 800;
+constexpr int height = 800;
 
 // ATTENTION! BGRA order
 constexpr TGAColor white  = {255, 255, 255, 255};
@@ -54,24 +56,48 @@ void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage& framebuf
     int topRightY = std::max({ay, by, cy});
 
     double totalArea = signedTriangleArea(ax, ay, bx, by, cx, cy);
+    // Conservative Back-face culling and discarding triangles that cover less than a pixel
+    if(totalArea < 1) return;
+
 #pragma omp parallel for
     for(int y = bottomLeftY; y < topRightY; y++) {
         for(int x = bottomLeftX; x < topRightX; x++) {
             double alpha = signedTriangleArea(x, y, ax, ay, bx, by) / totalArea;
             double beta = signedTriangleArea(x, y, bx, by, cx, cy) / totalArea;
             double gamma = signedTriangleArea(x, y, cx, cy, ax, ay) / totalArea;
+            // Barycentric Coordinates being negative implies the point is outside the triangle
             if(alpha < 0 || beta < 0 || gamma < 0) continue;
             framebuffer.set(x, y, color);
         }
     }
 }
 
-int main() {
+std::pair<int, int> project(vec3 v) {
+    return {
+        (v[0] + 1) * 0.5 * width,
+        (v[1] + 1) * 0.5 * height
+    };
+}
+
+int main(int argc, char** argv) {
+    if(argc != 2) {
+        std::cerr << "Usage: " << argv[0] << " obj/model.obj.\n";
+        return 1;
+    }
+
+    Model model{argv[1]};
     TGAImage framebuffer{width, height, TGAImage::RGB};
 
-    triangle(  7, 45, 35, 100, 45,  60, framebuffer, red);
-    triangle(120, 35, 90,   5, 45, 110, framebuffer, white);
-    triangle(115, 83, 80,  90, 85, 120, framebuffer, green);
+    for(int i{}; i < model.numFaces(); i++) {
+        auto [ax, ay] = project(model.vert(i, 0));
+        auto [bx, by] = project(model.vert(i, 1));
+        auto [cx, cy] = project(model.vert(i, 2));
+
+        TGAColor color;
+        for(int j{}; j < 3; j++) color[j] = rand() % 255;
+        
+        triangle(ax, ay, bx, by, cx, cy, framebuffer, color);
+    }
     
     framebuffer.write_tga_file("./output/framebuffer.tga");
 
