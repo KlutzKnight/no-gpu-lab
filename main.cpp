@@ -43,43 +43,25 @@ void line(int ax, int ay, int bx, int by, TGAImage& framebuffer, const TGAColor&
     }
 }
 
+double signedTriangleArea(int ax, int ay, int bx, int by, int cx, int cy) {
+    return 0.5 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+}
+
 void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage& framebuffer, const TGAColor& color) {
-    // Sort the vertices, a,b,c in ascending order of y coordinate
-    if(ay > by) {
-        std::swap(ax, bx);
-        std::swap(ay, by);
-    }
-    if(by > cy) {
-        std::swap(bx, cx);
-        std::swap(by, cy);
-    }
-    if(ay > by) {
-        std::swap(ax, bx);
-        std::swap(ay, by);
-    }
-    int total_height = cy - ay;
-    // If the lower half is not degenerate
-    if(ay != by) {
-        int segment_height = by - ay;
-        for(int y{ay}; y <= by; y++) {
-            int xL = ax + ((y - ay) * (cx - ax)) / total_height;
-            int xR = ax + ((y - ay) * (bx - ax)) / segment_height;
-            // Draw a horizontal Line
-            for(int x = std::min(xL, xR); x < std::max(xL, xR); x++) {
-                framebuffer.set(x, y, color);
-            }
-        }
-    }
-    // If the upper half is not degenerate
-    if(by != cy) {
-        int segment_height = cy - by;
-        for(int y{by}; y <= cy; y++) {
-            int xL = ax + ((y - ay) * (cx - ax)) / total_height;
-            int xR = bx + ((y - by) * (cx - bx)) / segment_height;
-            // Draw a horizontal Line
-            for(int x = std::min(xL, xR); x < std::max(xL, xR); x++) {
-                framebuffer.set(x, y, color);
-            }
+    int bottomLeftX = std::min({ax, bx, cx});
+    int bottomLeftY = std::min({ay, by, cy});
+    int topRightX = std::max({ax, bx, cx});
+    int topRightY = std::max({ay, by, cy});
+
+    double totalArea = signedTriangleArea(ax, ay, bx, by, cx, cy);
+#pragma omp parallel for
+    for(int y = bottomLeftY; y < topRightY; y++) {
+        for(int x = bottomLeftX; x < topRightX; x++) {
+            double alpha = signedTriangleArea(x, y, ax, ay, bx, by) / totalArea;
+            double beta = signedTriangleArea(x, y, bx, by, cx, cy) / totalArea;
+            double gamma = signedTriangleArea(x, y, cx, cy, ax, ay) / totalArea;
+            if(alpha < 0 || beta < 0 || gamma < 0) continue;
+            framebuffer.set(x, y, color);
         }
     }
 }
@@ -87,7 +69,7 @@ void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage& framebuf
 int main() {
     TGAImage framebuffer{width, height, TGAImage::RGB};
 
-    triangle(  7, 45, 35, 100, 45,  100, framebuffer, red);
+    triangle(  7, 45, 35, 100, 45,  60, framebuffer, red);
     triangle(120, 35, 90,   5, 45, 110, framebuffer, white);
     triangle(115, 83, 80,  90, 85, 120, framebuffer, green);
     
