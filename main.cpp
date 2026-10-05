@@ -1,4 +1,5 @@
 #include "tgaimage.h"
+#include <algorithm>
 #include <cmath>
 #include <utility>
 
