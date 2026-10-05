@@ -1,10 +1,9 @@
-#include "model.h"
 #include "tgaimage.h"
 #include <cmath>
 #include <utility>
 
-constexpr int width  = 800;
-constexpr int height = 800;
+constexpr int width  = 128;
+constexpr int height = 128;
 
 // ATTENTION! BGRA order
 constexpr TGAColor white  = {255, 255, 255, 255};
@@ -43,37 +42,54 @@ void line(int ax, int ay, int bx, int by, TGAImage& framebuffer, const TGAColor&
     }
 }
 
-std::tuple<int, int> project(vec3 v) {
-    // (x, y) is an orthogonal projection of the vector (x,y,z)
-    // The input models are scaled to fit in [-1, 1]^3
-    // we shift and scale the vector to fit the entire screen
-    return {
-        (v.x + 1) * width  / 2,
-        (v.y + 1) * height / 2
-    };
-}
-
-void render(Model& model, TGAImage& framebuffer) {
-    for(int i{}; i < model.numFaces(); i++) {
-        auto [ax, ay] = project(model.vert(i, 0));
-        auto [bx, by] = project(model.vert(i, 1));
-        auto [cx, cy] = project(model.vert(i, 2));
-
-        line(ax, ay, bx, by, framebuffer, red);
-        line(bx, by, cx, cy, framebuffer, red);
-        line(ax, ay, cx, cy, framebuffer, red);
+void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage& framebuffer, const TGAColor& color) {
+    // Sort the vertices, a,b,c in ascending order of y coordinate
+    if(ay > by) {
+        std::swap(ax, bx);
+        std::swap(ay, by);
     }
-    for(int i{}; i < model.numVerts(); i++) {
-        auto [ax, ay] = project(model.vert(i));
-        framebuffer.set(ax, ay, white);
+    if(by > cy) {
+        std::swap(bx, cx);
+        std::swap(by, cy);
+    }
+    if(ay > by) {
+        std::swap(ax, bx);
+        std::swap(ay, by);
+    }
+    int total_height = cy - ay;
+    // If the lower half is not degenerate
+    if(ay != by) {
+        int segment_height = by - ay;
+        for(int y{ay}; y <= by; y++) {
+            int xL = ax + ((y - ay) * (cx - ax)) / total_height;
+            int xR = ax + ((y - ay) * (bx - ax)) / segment_height;
+            // Draw a horizontal Line
+            for(int x = std::min(xL, xR); x < std::max(xL, xR); x++) {
+                framebuffer.set(x, y, color);
+            }
+        }
+    }
+    // If the upper half is not degenerate
+    if(by != cy) {
+        int segment_height = cy - by;
+        for(int y{by}; y <= cy; y++) {
+            int xL = ax + ((y - ay) * (cx - ax)) / total_height;
+            int xR = bx + ((y - by) * (cx - bx)) / segment_height;
+            // Draw a horizontal Line
+            for(int x = std::min(xL, xR); x < std::max(xL, xR); x++) {
+                framebuffer.set(x, y, color);
+            }
+        }
     }
 }
 
 int main() {
     TGAImage framebuffer{width, height, TGAImage::RGB};
-    Model diabloPose{"./obj/diablo3_pose/diablo3_pose.obj"};
 
-    render(diabloPose, framebuffer);
+    triangle(  7, 45, 35, 100, 45,  100, framebuffer, red);
+    triangle(120, 35, 90,   5, 45, 110, framebuffer, white);
+    triangle(115, 83, 80,  90, 85, 120, framebuffer, green);
+    
     framebuffer.write_tga_file("./output/framebuffer.tga");
 
     return 0;
