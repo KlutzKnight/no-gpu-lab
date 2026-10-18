@@ -10,11 +10,11 @@ constexpr int width  = 800;
 constexpr int height = 800;
 
 // ATTENTION! BGRA order
-constexpr TGAColor white  = {255, 255, 255, 255};
-constexpr TGAColor blue   = {255, 120,  64, 255};
-constexpr TGAColor green  = {  0, 255,   0, 255};
-constexpr TGAColor red    = {  0,   0, 255, 255};
-constexpr TGAColor yellow = {  0, 200, 255, 255};
+constexpr TGAColor white  = {{255, 255, 255, 255}};
+constexpr TGAColor blue   = {{255, 120,  64, 255}};
+constexpr TGAColor green  = {{  0, 255,   0, 255}};
+constexpr TGAColor red    = {{  0,   0, 255, 255}};
+constexpr TGAColor yellow = {{  0, 200, 255, 255}};
 
 void line(int ax, int ay, int bx, int by, TGAImage& frameBuffer, const TGAColor& color) {
     // If the line is steep (more vertical than horizontal), transpose the line
@@ -97,9 +97,9 @@ void render(Model& model, TGAImage& zBuffer, TGAImage& frameBuffer) {
         auto [bx, by, bz] = project(model.vert(i, 1));
         auto [cx, cy, cz] = project(model.vert(i, 2));
 
-        TGAColor color = {
+        TGAColor color = {{
             randBit(), randBit(), randBit()
-        };
+        }};
         
         triangle(ax, ay, az, bx, by, bz, cx, cy, cz, zBuffer, frameBuffer, color);
     }
