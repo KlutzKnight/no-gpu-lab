@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <tuple>
 #include <utility>
 
 constexpr int width  = 800;
@@ -15,7 +16,7 @@ constexpr TGAColor green  = {  0, 255,   0, 255};
 constexpr TGAColor red    = {  0,   0, 255, 255};
 constexpr TGAColor yellow = {  0, 200, 255, 255};
 
-void line(int ax, int ay, int bx, int by, TGAImage& framebuffer, const TGAColor& color) {
+void line(int ax, int ay, int bx, int by, TGAImage& frameBuffer, const TGAColor& color) {
     // If the line is steep (more vertical than horizontal), transpose the line
     bool steep = std::abs(ax - bx) < std::abs(by - ay);
     if(steep) {
@@ -32,10 +33,10 @@ void line(int ax, int ay, int bx, int by, TGAImage& framebuffer, const TGAColor&
     for(int x = ax; x <= bx; x++) {
         if(steep) {
             // if transposed, de-transpose
-            framebuffer.set(y, x, color);
+            frameBuffer.set(y, x, color);
         }
         else {
-            framebuffer.set(x, y, color);
+            frameBuffer.set(x, y, color);
         }
         ierror += 2 * std::abs(by - ay);
         if(ierror > (bx - ax)) {
@@ -49,7 +50,8 @@ double signedTriangleArea(int ax, int ay, int bx, int by, int cx, int cy) {
     return 0.5 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
 }
 
-void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage& framebuffer, const TGAColor& color) {
+void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, TGAImage& zBuffer, TGAImage& frameBuffer, TGAColor& color) {
+    // Calculate the bounding box of the triangle
     int bottomLeftX = std::min({ax, bx, cx});
     int bottomLeftY = std::min({ay, by, cy});
     int topRightX = std::max({ax, bx, cx});
@@ -67,39 +69,54 @@ void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage& framebuf
             double gamma = signedTriangleArea(x, y, cx, cy, ax, ay) / totalArea;
             // Barycentric Coordinates being negative implies the point is outside the triangle
             if(alpha < 0 || beta < 0 || gamma < 0) continue;
-            framebuffer.set(x, y, color);
+
+            unsigned char z = static_cast<unsigned char>(alpha * az + beta * bz + gamma * cz);
+            if(z <= zBuffer.get(x, y)[0]) continue;
+            zBuffer.set(x, y, {z});
+            frameBuffer.set(x, y, color);
         }
     }
 }
 
-std::pair<int, int> project(vec3 v) {
+std::tuple<int, int, int> project(vec3 v) {
     return {
         (v[0] + 1) * 0.5 * width,
-        (v[1] + 1) * 0.5 * height
+        (v[1] + 1) * 0.5 * height,
+        (v[2] + 1) * 0.5 * 255
     };
+}
+unsigned char randBit() {
+    return static_cast<unsigned char>(
+        rand()%255
+    );
+}
+
+void render(Model& model, TGAImage& zBuffer, TGAImage& frameBuffer) {
+    for(int i{}; i < model.numFaces(); i++) {
+        auto [ax, ay, az] = project(model.vert(i, 0));
+        auto [bx, by, bz] = project(model.vert(i, 1));
+        auto [cx, cy, cz] = project(model.vert(i, 2));
+
+        TGAColor color = {
+            randBit(), randBit(), randBit()
+        };
+        
+        triangle(ax, ay, az, bx, by, bz, cx, cy, cz, zBuffer, frameBuffer, color);
+    }
 }
 
 int main(int argc, char** argv) {
     if(argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " obj/model.obj.\n";
-        return 1;
+        std::cerr << "Usage: " << argv[0] << "obj/model.obj\n";
+        return -1;
     }
-
     Model model{argv[1]};
-    TGAImage framebuffer{width, height, TGAImage::RGB};
+    TGAImage frameBuffer{width, height, TGAImage::RGB};
+    TGAImage     zBuffer{width, height, TGAImage::GRAYSCALE};
 
-    for(int i{}; i < model.numFaces(); i++) {
-        auto [ax, ay] = project(model.vert(i, 0));
-        auto [bx, by] = project(model.vert(i, 1));
-        auto [cx, cy] = project(model.vert(i, 2));
-
-        TGAColor color;
-        for(int j{}; j < 3; j++) color[j] = rand() % 255;
-        
-        triangle(ax, ay, bx, by, cx, cy, framebuffer, color);
-    }
-    
-    framebuffer.write_tga_file("./output/framebuffer.tga");
+    render(model, zBuffer, frameBuffer);
+    frameBuffer.write_tga_file("./output/framebuffer.tga");
+    zBuffer.write_tga_file("./output/zbuffer.tga");
 
     return 0;
 }
