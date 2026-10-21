@@ -2,12 +2,13 @@
 #include "tgaimage.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <iostream>
 #include <tuple>
 #include <utility>
 
-constexpr int width  = 800;
-constexpr int height = 800;
+constexpr int width  = 600;
+constexpr int height = 600;
 
 // ATTENTION! BGRA order
 constexpr TGAColor white  = {{255, 255, 255, 255}};
@@ -50,7 +51,7 @@ double signedTriangleArea(int ax, int ay, int bx, int by, int cx, int cy) {
     return 0.5 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
 }
 
-void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, TGAImage& zBuffer, TGAImage& frameBuffer, TGAColor& color) {
+void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, mat<width, height>& zBufferArray, TGAImage& frameBuffer, TGAColor& color) {
     // Calculate the bounding box of the triangle
     int bottomLeftX = std::min({ax, bx, cx});
     int bottomLeftY = std::min({ay, by, cy});
@@ -70,38 +71,80 @@ void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, in
             // Barycentric Coordinates being negative implies the point is outside the triangle
             if(alpha < 0 || beta < 0 || gamma < 0) continue;
 
-            unsigned char z = static_cast<unsigned char>(alpha * az + beta * bz + gamma * cz);
-            if(z <= zBuffer.get(x, y)[0]) continue;
-            zBuffer.set(x, y, {z});
+            double z = alpha * az + beta * bz + gamma * cz;
+            if(x < 0 || x >= width || y < 0 || y >= height || z <= zBufferArray[x][y]) continue;
+
+            zBufferArray[x][y] = z;
             frameBuffer.set(x, y, color);
         }
     }
 }
 
-std::tuple<int, int, int> project(vec3 v) {
-    return {
-        (v[0] + 1) * 0.5 * width,
-        (v[1] + 1) * 0.5 * height,
-        (v[2] + 1) * 0.5 * 255
-    };
-}
 unsigned char randBit() {
     return static_cast<unsigned char>(
         rand()%255
     );
 }
+vec3 rot(const vec3& v) {
+    constexpr double angle {std::numbers::pi / 6};
+    const mat<3, 3> rotMat {{
+        { std::cos(angle), 0, std::sin(angle)},
+        {0, 1, 0},
+        {-std::sin(angle), 0, std::cos(angle)}
+    }};
+    return rotMat * v;
+}
+vec3 persp(const vec3& v) {
+    constexpr double c = 3;
+    return v / (1 - v.z / c);
+}
+std::tuple<int, int, int> project(const vec3& v) {
+    return {
+        (v.x + 1) * 0.5 * width,
+        (v.y + 1) * 0.5 * height,
+        (v.z + 1) * 0.5 * 255
+    };
+}
 
-void render(Model& model, TGAImage& zBuffer, TGAImage& frameBuffer) {
+void render(Model& model, mat<width, height>& zBufferArray, TGAImage& frameBuffer) {
     for(int i{}; i < model.numFaces(); i++) {
-        auto [ax, ay, az] = project(model.vert(i, 0));
-        auto [bx, by, bz] = project(model.vert(i, 1));
-        auto [cx, cy, cz] = project(model.vert(i, 2));
+        auto [ax, ay, az] = project(persp(rot(model.vert(i, 0))));
+        auto [bx, by, bz] = project(persp(rot(model.vert(i, 1))));
+        auto [cx, cy, cz] = project(persp(rot(model.vert(i, 2))));
 
         TGAColor color = {{
             randBit(), randBit(), randBit()
         }};
-        
-        triangle(ax, ay, az, bx, by, bz, cx, cy, cz, zBuffer, frameBuffer, color);
+
+        triangle(ax, ay, az, bx, by, bz, cx, cy, cz, zBufferArray, frameBuffer, color);
+    }
+}
+
+void renderZBuffer(mat<width, height>& zBufferArray, TGAImage& zBuffer) {
+    double min{std::numeric_limits<double>::max()};
+    double max{std::numeric_limits<double>::lowest()};
+
+    // Find the min and max points
+    for(int i{}; i < width; i++) {
+        for(int j{}; j < height; j++) {
+            auto z = zBufferArray[i][j];
+            if(!std::isfinite(z)) continue;
+
+            if(z <= min) min = z;
+            if(z >= max) max = z;
+        }
+    }
+
+    for(int i{}; i < width; i++) {
+        for(int j{}; j < height; j++) {
+            auto z = zBufferArray[i][j];
+
+            unsigned char color{};
+            if(std::isfinite(z) && max > min) {
+                color = static_cast<unsigned char>(((z - min) / (max - min)) * 255);
+            }
+            zBuffer.set(i, j, {{color}});
+        }
     }
 }
 
@@ -113,8 +156,11 @@ int main(int argc, char** argv) {
     Model model{argv[1]};
     TGAImage frameBuffer{width, height, TGAImage::RGB};
     TGAImage     zBuffer{width, height, TGAImage::GRAYSCALE};
+    mat<width, height> zBufferArray;
 
-    render(model, zBuffer, frameBuffer);
+    render(model, zBufferArray, frameBuffer);
+    renderZBuffer(zBufferArray, zBuffer);
+
     frameBuffer.write_tga_file("./output/framebuffer.tga");
     zBuffer.write_tga_file("./output/zbuffer.tga");
 
