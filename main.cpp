@@ -1,37 +1,60 @@
+#include "geometry.h"
 #include "model.h"
 #include "tgaimage.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <iostream>
-#include <tuple>
 #include <utility>
+#include <vector>
 
-constexpr int width  = 600;
-constexpr int height = 600;
+mat<4, 4> Viewport, Perspective, ModelView;
 
-// ATTENTION! BGRA order
-constexpr TGAColor white  = {{255, 255, 255, 255}};
-constexpr TGAColor blue   = {{255, 120,  64, 255}};
-constexpr TGAColor green  = {{  0, 255,   0, 255}};
-constexpr TGAColor red    = {{  0,   0, 255, 255}};
-constexpr TGAColor yellow = {{  0, 200, 255, 255}};
+void viewport(const int x, const int y, const int w, const int h) {
+    Viewport = {{
+        {w/2.0, 0, 0,x + w/2.0},
+        { 0,h/2.0, 0,y + h/2.0},
+        { 0, 0, 1, 0},
+        { 0, 0, 0, 1},
+    }};
+}
+void perspective(const double f) {
+    Perspective = {{
+        {1, 0, 0, 0},
+        {0, 1, 0, 0},
+        {0, 0, 1, 0},
+        {0, 0, -1/f, 1},
+    }};
+}
+void lookat(const vec3& eye, const vec3& center, const vec3& up) {
+    vec3 n = normalize(eye - center);
+    vec3 l = normalize(cross(up, n));
+    vec3 m = normalize(cross(n, l));
+    ModelView = mat<4, 4> {{{l.x, l.y, l.z, 0},
+                            {m.x, m.y, m.z, 0},
+                            {n.x, n.y, n.z, 0},
+                            { 0, 0, 0, 1}}}
+                * mat<4, 4> {{{1, 0, 0, -center.x},
+                            {0, 1, 0, -center.y},
+                            {0, 0, 1, -center.z},
+                            {0, 0, 0, 1}}};
+}
 
-void line(int ax, int ay, int bx, int by, TGAImage& frameBuffer, const TGAColor& color) {
+void line(vec2i& a, vec2i& b, TGAImage& frameBuffer, const TGAColor& color) {
     // If the line is steep (more vertical than horizontal), transpose the line
-    bool steep = std::abs(ax - bx) < std::abs(by - ay);
+    bool steep = std::abs(a.x - b.x) < std::abs(b.y - a.y);
     if(steep) {
-        std::swap(ax, ay);
-        std::swap(bx, by);
+        std::swap(a.x, a.y);
+        std::swap(b.x, b.y);
     }
     // If the first is bigger, swap them
-    if(ax > bx) {
-        std::swap(ax, bx);
-        std::swap(ay, by);
+    if(a.x > b.x) {
+        std::swap(a.x, b.x);
+        std::swap(a.y, b.y);
     }
-    int y = ay;
+    int y = a.y;
     int ierror = 0;
-    for(int x = ax; x <= bx; x++) {
+    for(int x = a.x; x <= b.x; x++) {
         if(steep) {
             // if transposed, de-transpose
             frameBuffer.set(y, x, color);
@@ -39,42 +62,38 @@ void line(int ax, int ay, int bx, int by, TGAImage& frameBuffer, const TGAColor&
         else {
             frameBuffer.set(x, y, color);
         }
-        ierror += 2 * std::abs(by - ay);
-        if(ierror > (bx - ax)) {
-            y += by > ay ? 1 : -1;
-            ierror -= 2 * (bx - ax);
+        ierror += 2 * std::abs(b.y - a.y);
+        if(ierror > (b.x - a.x)) {
+            y += b.y > a.y ? 1 : -1;
+            ierror -= 2 * (b.x - a.x);
         }
     }
 }
 
-double signedTriangleArea(int ax, int ay, int bx, int by, int cx, int cy) {
-    return 0.5 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
-}
-
-void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, mat<width, height>& zBufferArray, TGAImage& frameBuffer, TGAColor& color) {
-    // Calculate the bounding box of the triangle
-    int bottomLeftX = std::min({ax, bx, cx});
-    int bottomLeftY = std::min({ay, by, cy});
-    int topRightX = std::max({ax, bx, cx});
-    int topRightY = std::max({ay, by, cy});
-
-    double totalArea = signedTriangleArea(ax, ay, bx, by, cx, cy);
+void rasterize(vec3 vertices[3], std::vector<double>& zBuffer, TGAImage& frameBuffer, const TGAColor& color) {
+    // Triangle defined by the three vertices
+    mat<3, 3> triangle = {{
+        {vertices[0].x, vertices[0].y, 1},
+        {vertices[1].x, vertices[1].y, 1},
+        {vertices[2].x, vertices[2].y, 1}
+    }};
     // Conservative Back-face culling and discarding triangles that cover less than a pixel
-    if(totalArea < 1) return;
+    if(triangle.determinant() < 1) return;
 
+    // Calculate the bounding box of the triangle
+    const auto [bbMinX, bbMaxX] = std::minmax({vertices[0].x, vertices[1].x, vertices[2].x});
+    const auto [bbMinY, bbMaxY] = std::minmax({vertices[0].y, vertices[1].y, vertices[2].y});
 #pragma omp parallel for
-    for(int y = bottomLeftY; y < topRightY; y++) {
-        for(int x = bottomLeftX; x < topRightX; x++) {
-            double alpha = signedTriangleArea(x, y, ax, ay, bx, by) / totalArea;
-            double beta = signedTriangleArea(x, y, bx, by, cx, cy) / totalArea;
-            double gamma = signedTriangleArea(x, y, cx, cy, ax, ay) / totalArea;
+    for(int y = std::max<int>(bbMinY, 0); y <= std::min<int>(bbMaxY, frameBuffer.height() - 1); y++) {
+        for(int x = std::max<int>(bbMinX, 0); x <= std::min<int>(bbMaxX, frameBuffer.width() - 1); x++) {
+            vec3 bc = triangle.transpose().inverse() * vec3 {static_cast<double>(x), static_cast<double>(y), 1};
             // Barycentric Coordinates being negative implies the point is outside the triangle
-            if(alpha < 0 || beta < 0 || gamma < 0) continue;
+            if(bc[0] < 0 || bc[1] < 0 || bc[2] < 0) continue;
 
-            double z = alpha * az + beta * bz + gamma * cz;
-            if(x < 0 || x >= width || y < 0 || y >= height || z <= zBufferArray[x][y]) continue;
+            double z = dot(bc, vec3 {vertices[0].z, vertices[1].z, vertices[2].z});
+            if(z <= zBuffer[x + y * frameBuffer.width()]) continue;
 
-            zBufferArray[x][y] = z;
+            zBuffer[x + y * frameBuffer.width()] = z;
             frameBuffer.set(x, y, color);
         }
     }
@@ -85,84 +104,53 @@ unsigned char randBit() {
         rand()%255
     );
 }
-vec3 rot(const vec3& v) {
-    constexpr double angle {std::numbers::pi / 6};
-    const mat<3, 3> rotMat {{
-        { std::cos(angle), 0, std::sin(angle)},
-        {0, 1, 0},
-        {-std::sin(angle), 0, std::cos(angle)}
-    }};
-    return rotMat * v;
-}
-vec3 persp(const vec3& v) {
-    constexpr double c = 3;
-    return v / (1 - v.z / c);
-}
-std::tuple<int, int, int> project(const vec3& v) {
-    return {
-        (v.x + 1) * 0.5 * width,
-        (v.y + 1) * 0.5 * height,
-        (v.z + 1) * 0.5 * 255
-    };
+
+vec3 transform(const vec3& v) {
+    vec4 per = Perspective * ModelView * vec4{v.x, v.y, v.z, 1};
+    vec4 res = Viewport * vec4{per.x / per.w, per.y / per.w, per.z / per.w, 1};
+    return {res.x, res.y, res.z};
 }
 
-void render(Model& model, mat<width, height>& zBufferArray, TGAImage& frameBuffer) {
+void render(Model& model, std::vector<double>& zBufferArray, TGAImage& frameBuffer) {
+    // Iterate through all triangles
     for(int i{}; i < model.numFaces(); i++) {
-        auto [ax, ay, az] = project(persp(rot(model.vert(i, 0))));
-        auto [bx, by, bz] = project(persp(rot(model.vert(i, 1))));
-        auto [cx, cy, cz] = project(persp(rot(model.vert(i, 2))));
-
+        vec3 vertices[3];
+        // Transform the vertices ready for rasterization
+        for(int d : {0, 1, 2}) {
+            vertices[d] = transform(model.vert(i, d));
+        }
         TGAColor color = {{
             randBit(), randBit(), randBit()
         }};
 
-        triangle(ax, ay, az, bx, by, bz, cx, cy, cz, zBufferArray, frameBuffer, color);
-    }
-}
-
-void renderZBuffer(mat<width, height>& zBufferArray, TGAImage& zBuffer) {
-    double min{std::numeric_limits<double>::max()};
-    double max{std::numeric_limits<double>::lowest()};
-
-    // Find the min and max points
-    for(int i{}; i < width; i++) {
-        for(int j{}; j < height; j++) {
-            auto z = zBufferArray[i][j];
-            if(!std::isfinite(z)) continue;
-
-            if(z <= min) min = z;
-            if(z >= max) max = z;
-        }
-    }
-
-    for(int i{}; i < width; i++) {
-        for(int j{}; j < height; j++) {
-            auto z = zBufferArray[i][j];
-
-            unsigned char color{};
-            if(std::isfinite(z) && max > min) {
-                color = static_cast<unsigned char>(((z - min) / (max - min)) * 255);
-            }
-            zBuffer.set(i, j, {{color}});
-        }
+        rasterize(vertices, zBufferArray, frameBuffer, color);
     }
 }
 
 int main(int argc, char** argv) {
-    if(argc != 2) {
+    if(argc < 2) {
         std::cerr << "Usage: " << argv[0] << "obj/model.obj\n";
-        return -1;
+        return 1;
     }
-    Model model{argv[1]};
+
+    constexpr int width  = 800;     // output image size
+    constexpr int height = 800;
+    constexpr vec3    eye{-1,0,2};  // camera position
+    constexpr vec3 center{0,0,0};   // camera direction
+    constexpr vec3     up{0,1,0};   // camera up vector
+
+    lookat(eye, center, up);
+    perspective(norm(eye - center));
+    viewport(width / 16, height / 16, width * 7/8, height * 7/8);
+
     TGAImage frameBuffer{width, height, TGAImage::RGB};
-    TGAImage     zBuffer{width, height, TGAImage::GRAYSCALE};
-    mat<width, height> zBufferArray;
-
-    render(model, zBufferArray, frameBuffer);
-    renderZBuffer(zBufferArray, zBuffer);
-
+    std::vector<double> zBuffer(width * height, std::numeric_limits<double>::lowest());
+    // Iterate through all input objects
+    for(int i{1}; i < argc; i++) {
+        Model model{argv[i]};
+        render(model, zBuffer, frameBuffer);
+    }
     frameBuffer.write_tga_file("./output/framebuffer.tga");
-    zBuffer.write_tga_file("./output/zbuffer.tga");
 
     return 0;
 }

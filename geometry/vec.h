@@ -166,19 +166,19 @@ auto normalize(const vec<n, T>& v) {
     return v / magnitude;
 }
 
-template<>
-struct vec<2, double> {
-    double x = 0, y = 0;
+template<typename T>
+struct vec<2, T> {
+    T x = 0, y = 0;
     constexpr int dimensions() const { return 2;}
-    constexpr double& operator[](const int i)       { assert(i >= 0 && i < 2); return i ? y : x; }
-    constexpr double  operator[](const int i) const { assert(i >= 0 && i < 2); return i ? y : x; }
+    constexpr T& operator[](const int i)       { assert(i >= 0 && i < 2); return i ? y : x; }
+    constexpr T  operator[](const int i) const { assert(i >= 0 && i < 2); return i ? y : x; }
 };
 
-template<>
-struct vec<3, double> {
-    double x = 0, y = 0, z = 0;
+template<typename T>
+struct vec<3, T> {
+    T x = 0, y = 0, z = 0;
     constexpr int dimensions() const { return 3;}
-    constexpr double& operator[](const int i) {
+    constexpr T& operator[](const int i) {
         assert(i >= 0 && i < 3);
         switch(i) {
             case 0:  return x;
@@ -186,7 +186,7 @@ struct vec<3, double> {
             default: return z;
         }
     }
-    constexpr double operator[](const int i) const {
+    constexpr T operator[](const int i) const {
         assert(i >= 0 && i < 3);
         switch(i) {
             case 0:  return x;
@@ -194,14 +194,14 @@ struct vec<3, double> {
             default: return z;
         }
     }
-    vec<2> xy() const { return {x, y}; }
+    vec<2, T> xy() const { return {x, y}; }
 };
 
-template<>
-struct vec<4, double> {
-    double x = 0, y = 0, z = 0, w = 0;
+template<typename T>
+struct vec<4, T> {
+    T x = 0, y = 0, z = 0, w = 0;
     constexpr int dimensions() const { return 4;}
-    constexpr double& operator[](const int i) {
+    constexpr T& operator[](const int i) {
         assert(i >= 0 && i < 4);
         switch(i) {
             case 0: return x;
@@ -210,7 +210,7 @@ struct vec<4, double> {
             default: return w;
         }
     }
-    constexpr double operator[](const int i) const {
+    constexpr T operator[](const int i) const {
         assert(i >= 0 && i < 4);
         switch(i) {
             case 0: return x;
@@ -219,11 +219,14 @@ struct vec<4, double> {
             default: return w;
         }
     }
-    vec<2> xy()  const { return {x, y}; }
-    vec<3> xyz() const { return {x, y, z}; }
+    vec<2, T> xy()  const { return {x, y}; }
+    vec<3, T> xyz() const { return {x, y, z}; }
 };
 
 using vec2  = vec<2>;
 using vec3  = vec<3>;
 using vec4  = vec<4>;
+
+using vec2i = vec<2, int>;
 using vec3i = vec<3, int>;
+using vec4i = vec<4, int>;
