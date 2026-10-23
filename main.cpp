@@ -1,103 +1,26 @@
 #include "geometry.h"
+#include "gl.h"
 #include "model.h"
-#include "tgaimage.h"
-#include <algorithm>
-#include <cmath>
-#include <limits>
 #include <iostream>
-#include <utility>
-#include <vector>
 
-mat<4, 4> Viewport, Perspective, ModelView;
 
-void viewport(const int x, const int y, const int w, const int h) {
-    Viewport = {{
-        {w/2.0, 0, 0,x + w/2.0},
-        { 0,h/2.0, 0,y + h/2.0},
-        { 0, 0, 1, 0},
-        { 0, 0, 0, 1},
-    }};
-}
-void perspective(const double f) {
-    Perspective = {{
-        {1, 0, 0, 0},
-        {0, 1, 0, 0},
-        {0, 0, 1, 0},
-        {0, 0, -1/f, 1},
-    }};
-}
-void lookat(const vec3& eye, const vec3& center, const vec3& up) {
-    vec3 n = normalize(eye - center);
-    vec3 l = normalize(cross(up, n));
-    vec3 m = normalize(cross(n, l));
-    ModelView = mat<4, 4> {{{l.x, l.y, l.z, 0},
-                            {m.x, m.y, m.z, 0},
-                            {n.x, n.y, n.z, 0},
-                            { 0, 0, 0, 1}}}
-                * mat<4, 4> {{{1, 0, 0, -center.x},
-                            {0, 1, 0, -center.y},
-                            {0, 0, 1, -center.z},
-                            {0, 0, 0, 1}}};
-}
+struct RandomShader : IShader {
+    const Model model;
+    TGAColor color;
 
-void line(vec2i& a, vec2i& b, TGAImage& frameBuffer, const TGAColor& color) {
-    // If the line is steep (more vertical than horizontal), transpose the line
-    bool steep = std::abs(a.x - b.x) < std::abs(b.y - a.y);
-    if(steep) {
-        std::swap(a.x, a.y);
-        std::swap(b.x, b.y);
+    RandomShader(const Model& m)
+    : model{m}
+    {
     }
-    // If the first is bigger, swap them
-    if(a.x > b.x) {
-        std::swap(a.x, b.x);
-        std::swap(a.y, b.y);
+    virtual vec3 vertex(const int face, const int vertex) {
+        // Transform vertex from object coordinates to screen coordinates
+        return transform(model.vert(face, vertex));
     }
-    int y = a.y;
-    int ierror = 0;
-    for(int x = a.x; x <= b.x; x++) {
-        if(steep) {
-            // if transposed, de-transpose
-            frameBuffer.set(y, x, color);
-        }
-        else {
-            frameBuffer.set(x, y, color);
-        }
-        ierror += 2 * std::abs(b.y - a.y);
-        if(ierror > (b.x - a.x)) {
-            y += b.y > a.y ? 1 : -1;
-            ierror -= 2 * (b.x - a.x);
-        }
+
+    virtual std::pair<bool, TGAColor> fragment(const vec3&) const {
+        return {false, color};
     }
-}
-
-void rasterize(vec3 vertices[3], std::vector<double>& zBuffer, TGAImage& frameBuffer, const TGAColor& color) {
-    // Triangle defined by the three vertices
-    mat<3, 3> triangle = {{
-        {vertices[0].x, vertices[0].y, 1},
-        {vertices[1].x, vertices[1].y, 1},
-        {vertices[2].x, vertices[2].y, 1}
-    }};
-    // Conservative Back-face culling and discarding triangles that cover less than a pixel
-    if(triangle.determinant() < 1) return;
-
-    // Calculate the bounding box of the triangle
-    const auto [bbMinX, bbMaxX] = std::minmax({vertices[0].x, vertices[1].x, vertices[2].x});
-    const auto [bbMinY, bbMaxY] = std::minmax({vertices[0].y, vertices[1].y, vertices[2].y});
-#pragma omp parallel for
-    for(int y = std::max<int>(bbMinY, 0); y <= std::min<int>(bbMaxY, frameBuffer.height() - 1); y++) {
-        for(int x = std::max<int>(bbMinX, 0); x <= std::min<int>(bbMaxX, frameBuffer.width() - 1); x++) {
-            vec3 bc = triangle.transpose().inverse() * vec3 {static_cast<double>(x), static_cast<double>(y), 1};
-            // Barycentric Coordinates being negative implies the point is outside the triangle
-            if(bc[0] < 0 || bc[1] < 0 || bc[2] < 0) continue;
-
-            double z = dot(bc, vec3 {vertices[0].z, vertices[1].z, vertices[2].z});
-            if(z <= zBuffer[x + y * frameBuffer.width()]) continue;
-
-            zBuffer[x + y * frameBuffer.width()] = z;
-            frameBuffer.set(x, y, color);
-        }
-    }
-}
+};
 
 unsigned char randBit() {
     return static_cast<unsigned char>(
@@ -105,25 +28,17 @@ unsigned char randBit() {
     );
 }
 
-vec3 transform(const vec3& v) {
-    vec4 per = Perspective * ModelView * vec4{v.x, v.y, v.z, 1};
-    vec4 res = Viewport * vec4{per.x / per.w, per.y / per.w, per.z / per.w, 1};
-    return {res.x, res.y, res.z};
-}
-
-void render(Model& model, std::vector<double>& zBufferArray, TGAImage& frameBuffer) {
-    // Iterate through all triangles
+void render(Model& model, RandomShader& shader, TGAImage& frameBuffer) {
+    // Iterate through all facets
     for(int i{}; i < model.numFaces(); i++) {
-        vec3 vertices[3];
-        // Transform the vertices ready for rasterization
-        for(int d : {0, 1, 2}) {
-            vertices[d] = transform(model.vert(i, d));
-        }
-        TGAColor color = {{
-            randBit(), randBit(), randBit()
-        }};
+        shader.color = {{randBit(), randBit(), randBit()}};
+        Triangle screen = {         // Assemble the primitive
+            shader.vertex(i, 0),
+            shader.vertex(i, 1),
+            shader.vertex(i, 2)
+        };
 
-        rasterize(vertices, zBufferArray, frameBuffer, color);
+        rasterize(screen, shader, frameBuffer);
     }
 }
 
@@ -139,16 +54,17 @@ int main(int argc, char** argv) {
     constexpr vec3 center{0,0,0};   // camera direction
     constexpr vec3     up{0,1,0};   // camera up vector
 
-    lookat(eye, center, up);
-    perspective(norm(eye - center));
-    viewport(width / 16, height / 16, width * 7/8, height * 7/8);
+    lookAt(eye, center, up);
+    initPerspective(norm(eye - center));
+    initViewport(width / 16, height / 16, width * 7/8, height * 7/8);
+    initZBuffer(width, height);
 
     TGAImage frameBuffer{width, height, TGAImage::RGB};
-    std::vector<double> zBuffer(width * height, std::numeric_limits<double>::lowest());
     // Iterate through all input objects
     for(int i{1}; i < argc; i++) {
         Model model{argv[i]};
-        render(model, zBuffer, frameBuffer);
+        RandomShader shader(model);
+        render(model, shader, frameBuffer);
     }
     frameBuffer.write_tga_file("./output/framebuffer.tga");
 

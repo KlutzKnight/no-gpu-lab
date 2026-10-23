@@ -20,7 +20,7 @@ endif()
 
 find_package(OpenMP COMPONENTS CXX)
 
-set(SOURCES main.cpp model.cpp tgaimage.cpp)
+set(SOURCES main.cpp model.cpp tgaimage.cpp gl.cpp)
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/geometry)
