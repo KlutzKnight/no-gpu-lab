@@ -7,7 +7,7 @@ if(NOT is_multi_config AND NOT (CMAKE_BUILD_TYPE OR DEFINED ENV{CMAKE_BUILD_TYPE
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Release default")
 endif()
 
-project(myrenderer LANGUAGES CXX)
+project(nogpulab LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
