@@ -3,6 +3,7 @@
 #include "geometry.h"
 #include "tgaimage.h"
 
+// Transforms the vertex into screen coordinates
 vec3 transform(const vec3& v);
 
 void lookAt(const vec3& eye, const vec3& center, const vec3& up);
@@ -11,7 +12,7 @@ void initPerspective(const double f);
 void initZBuffer(const int width, const int height);
 
 struct IShader {
-    virtual std::pair<bool, TGAColor> fragment(const vec3& bar) const = 0;
+    virtual std::pair<bool, TGAColor> fragment(const vec3& bac) const = 0;
 };
 
 using Triangle = vec3[3];   // Triangle primitive made of 3 ordered points
