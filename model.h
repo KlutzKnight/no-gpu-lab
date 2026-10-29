@@ -1,6 +1,4 @@
 #pragma once
-#include <array>
-#include <istream>
 #include <vector>
 #include "geometry.h"
 
