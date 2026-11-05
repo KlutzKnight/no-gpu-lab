@@ -16,6 +16,7 @@ struct PhongShader : IShader {
     vec3 light;     // light position in eye coordinates
     vec3 eye;       // camera position in eye coordinates
     Triangle tri;   // Triangle in eye coordinates
+    Triangle norm;  // Triangle Vertex Normals in eye coordinates
 
     PhongShader(const vec3& l, const vec3& cam, const Model& m)
     : model{m}
@@ -26,10 +27,12 @@ struct PhongShader : IShader {
     vec3 vertex(const int face, const int vertex) {
         // Transform vertex from object coordinates to eye coordinates
         tri[vertex] = view(model.vert(face, vertex));
+        vec3 n = model.vertNorm(face, vertex);
+        norm[vertex] = (ModelView.inverse().transpose() * vec4 {n.x, n.y, n.z, 1}).xyz();
         return transform(model.vert(face, vertex)); // Return Screen Coordinates
     }
 
-    std::pair<bool, TGAColor> fragment(const vec3&) const override {
+    std::pair<bool, TGAColor> fragment(const vec3& vert) const override {
         // Contribution of each component
         constexpr double ambientCoeff{0.3};
         constexpr double diffuseCoeff{0.75};
@@ -38,7 +41,7 @@ struct PhongShader : IShader {
         constexpr double i{0.8};     // light intensity
 
         TGAColor glFragColor{{255, 255, 255, 255}};
-        vec3 n {normalize(cross(tri[1] - tri[0], tri[2] - tri[0]))};    // Normal vector of triangle
+        vec3 n {normalize(vert[0] * norm[0] + vert[1] * norm[1] + vert[2] * norm[2])};    // Normal vector of triangle
         vec3 l {normalize(light)};     // Vector towards the light source
         vec3 v {normalize(eye)};       // Vector towards the camera
         double cosA = dot(n, l);
