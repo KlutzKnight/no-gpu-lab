@@ -2,24 +2,41 @@
 #include "gl.h"
 #include "model.h"
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 
-extern mat<4,4> ModelView;
+extern mat<4,4> Viewport, Perspective, ModelView;
 
-vec3 view(const vec3& v) {
+// Convert from object to view coordiantes
+inline vec3 view(const vec3& v) {
     vec4 eye = ModelView * vec4{v.x, v.y, v.z, 1};
     return eye.xyz();
+}
+// Scale BGRA texture to [-1, 1]
+inline vec3 scale(const TGAColor& mapped) {
+    return {
+        mapped[2] * 2.0 / 255.0 - 1,
+        mapped[1] * 2.0 / 255.0 - 1,
+        mapped[0] * 2.0 / 255.0 - 1
+    };
+}
+// Scale uv vector from [0, 1] to view coordinates and reverse the y coordinate
+inline vec3 scale(const vec3& uv, const TGAImage& buf) {
+    return vec3{uv.x * buf.width(), (1 - uv.y) * buf.height(), uv.z};
 }
 
 struct PhongShader : IShader {
     const Model model;
+    const TGAImage textureImage;
     vec3 light;     // light position in eye coordinates
     vec3 eye;       // camera position in eye coordinates
     Triangle tri;   // Triangle in eye coordinates
-    Triangle norm;  // Triangle Vertex Normals in eye coordinates
+    Triangle text;  // Triangle vertex textures in UV coordinates
+    Triangle norm;  // Triangle vertex normals in eye coordinates
 
-    PhongShader(const vec3& l, const vec3& cam, const Model& m)
-    : model{m}
+    PhongShader(const vec3& l, const vec3& cam, const Model& m, const TGAImage& t)
+    : model{m},
+      textureImage{t}
     {
         light = view(l);
         eye = view(cam);
@@ -27,12 +44,13 @@ struct PhongShader : IShader {
     vec3 vertex(const int face, const int vertex) {
         // Transform vertex from object coordinates to eye coordinates
         tri[vertex] = view(model.vert(face, vertex));
+        text[vertex] = scale(model.vertText(face, vertex), textureImage);    // Scale the uv coordinates
         vec3 n = model.vertNorm(face, vertex);
         norm[vertex] = (ModelView.inverse().transpose() * vec4 {n.x, n.y, n.z, 1}).xyz();
         return transform(model.vert(face, vertex)); // Return Screen Coordinates
     }
 
-    std::pair<bool, TGAColor> fragment(const vec3& vert) const override {
+    std::pair<bool, TGAColor> fragment(const vec3& bar) const override {
         // Contribution of each component
         constexpr double ambientCoeff{0.3};
         constexpr double diffuseCoeff{0.75};
@@ -41,11 +59,13 @@ struct PhongShader : IShader {
         constexpr double i{0.8};     // light intensity
 
         TGAColor glFragColor{{255, 255, 255, 255}};
-        vec3 n {normalize(vert[0] * norm[0] + vert[1] * norm[1] + vert[2] * norm[2])};    // Normal vector of triangle
-        vec3 l {normalize(light)};     // Vector towards the light source
-        vec3 v {normalize(eye)};       // Vector towards the camera
+        // Interpolate uv coordinates
+        vec3 u {(bar[0] * text[0] + bar[1] * text[1] + bar[2] * text[2])};
+        vec3 n {normalize(scale(textureImage.get(std::round(u.x), std::round(u.y))))};      // Normal vector of point
+        vec3 l {normalize(light)};              // Vector towards the light source
+        vec3 v {normalize(eye)};                // Vector towards the camera
         double cosA = dot(n, l);
-        vec3 r {normalize(2 * n * cosA - l)};          // Reflected vector
+        vec3 r {normalize(2 * n * cosA - l)};   // Reflected vector
         double cosB = dot(r, v);
 
         double Ia{i * ambientCoeff};
@@ -59,12 +79,6 @@ struct PhongShader : IShader {
         return {false, glFragColor};
     }
 };
-
-unsigned char randBit() {
-    return static_cast<unsigned char>(
-        rand()%255
-    );
-}
 
 void render(Model& model, PhongShader& shader, TGAImage& frameBuffer) {
     // Iterate through all facets
@@ -98,10 +112,12 @@ int main(int argc, char** argv) {
     initZBuffer(width, height);
 
     TGAImage frameBuffer{width, height, TGAImage::GRAYSCALE};
+    TGAImage textureImage{};
     // Iterate through all input objects
-    for(int i{1}; i < argc; i++) {
+    for(int i{1}; i < argc; i += 2) {
         Model model{argv[i]};
-        PhongShader shader(light, eye, model);
+        textureImage.read_tga_file(argv[i+1]);
+        PhongShader shader(light, eye, model, textureImage);
         render(model, shader, frameBuffer);
     }
     frameBuffer.write_tga_file("./output/framebuffer.tga");

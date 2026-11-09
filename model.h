@@ -9,9 +9,13 @@ struct Model {
     vec3 vert(const int i) const;
     vec3 vert(const int iface, const int nthvert) const;
     vec3 vertNorm(const int iface, const int nthvert) const;
+    vec3 vertText(const int iface, const int nthvert) const;
 private:
     std::vector<vec3>  m_vertices;      // Array of vertices
-    std::vector<vec3>  m_normals; // Array of vertex normals
+    std::vector<vec3>  m_vNormals;      // Array of vertex normals
+    std::vector<vec3>  m_vTextures;     // Array of vertex Textures
+
     std::vector<vec3i> m_facetVert;     // Trangulated vertex coordinates
     std::vector<vec3i> m_facetNorm;     // Trangulated vertex normal coordinates
+    std::vector<vec3i> m_facetText;     // Trangulated vertex Texture coordinates
 };
