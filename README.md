@@ -22,7 +22,7 @@ This project is my implementation of a software renderer while learning the fund
 
 ## Getting Started
 
-###Prerequisites
+### Prerequisites
 - C++ Compiler
 - Git
 - CMake
