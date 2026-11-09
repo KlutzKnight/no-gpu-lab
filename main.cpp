@@ -7,47 +7,25 @@
 
 extern mat<4,4> Viewport, Perspective, ModelView;
 
-// Convert from object to view coordiantes
-inline vec3 view(const vec3& v) {
-    vec4 eye = ModelView * vec4{v.x, v.y, v.z, 1};
-    return eye.xyz();
-}
-// Scale BGRA texture to [-1, 1]
-inline vec3 scale(const TGAColor& mapped) {
-    return {
-        mapped[2] * 2.0 / 255.0 - 1,
-        mapped[1] * 2.0 / 255.0 - 1,
-        mapped[0] * 2.0 / 255.0 - 1
-    };
-}
-// Scale uv vector from [0, 1] to view coordinates and reverse the y coordinate
-inline vec3 scale(const vec3& uv, const TGAImage& buf) {
-    return vec3{uv.x * buf.width(), (1 - uv.y) * buf.height(), uv.z};
-}
-
 struct PhongShader : IShader {
     const Model model;
-    const TGAImage textureImage;
-    vec3 light;     // light position in eye coordinates
-    vec3 eye;       // camera position in eye coordinates
+    vec4 light;     // light position in eye coordinates
+    vec4 eye;       // camera position in eye coordinates
     Triangle tri;   // Triangle in eye coordinates
-    Triangle text;  // Triangle vertex textures in UV coordinates
-    Triangle norm;  // Triangle vertex normals in eye coordinates
+    vec2 text[3];   // Triangle vertex textures in UV coordinates
 
-    PhongShader(const vec3& l, const vec3& cam, const Model& m, const TGAImage& t)
-    : model{m},
-      textureImage{t}
+    PhongShader(const vec3& l, const vec3& cam, const Model& m)
+    : model{m}
     {
-        light = view(l);
-        eye = view(cam);
+        light = ModelView * vec4{l.x, l.y, l.z, 1};
+        eye = ModelView * vec4{cam.x, cam.y, cam.z, 1};
     }
-    vec3 vertex(const int face, const int vertex) {
+    vec4 vertex(const int face, const int vertex) {
         // Transform vertex from object coordinates to eye coordinates
-        tri[vertex] = view(model.vert(face, vertex));
-        text[vertex] = scale(model.vertText(face, vertex), textureImage);    // Scale the uv coordinates
-        vec3 n = model.vertNorm(face, vertex);
-        norm[vertex] = (ModelView.inverse().transpose() * vec4 {n.x, n.y, n.z, 1}).xyz();
-        return transform(model.vert(face, vertex)); // Return Screen Coordinates
+        tri[vertex] = ModelView * model.vert(face, vertex);
+        text[vertex] = model.uv(face, vertex);    // Scale the uv coordinates
+        vec4 vert = Perspective * tri[vertex];
+        return Viewport * vec4 {vert.x / vert.w, vert.y / vert.w, vert.z / vert.w, 1};  // Return Screen Coordinates
     }
 
     std::pair<bool, TGAColor> fragment(const vec3& bar) const override {
@@ -60,10 +38,10 @@ struct PhongShader : IShader {
 
         TGAColor glFragColor{{255, 255, 255, 255}};
         // Interpolate uv coordinates
-        vec3 u {(bar[0] * text[0] + bar[1] * text[1] + bar[2] * text[2])};
-        vec3 n {normalize(scale(textureImage.get(std::round(u.x), std::round(u.y))))};      // Normal vector of point
-        vec3 l {normalize(light)};              // Vector towards the light source
-        vec3 v {normalize(eye)};                // Vector towards the camera
+        vec2 uv {(bar[0] * text[0] + bar[1] * text[1] + bar[2] * text[2])};
+        vec3 n {normalize(model.normal(uv) * 1024)};   // Normal vector of point
+        vec3 l {normalize(light.xyz())};        // Vector towards the light source
+        vec3 v {normalize(eye.xyz())};          // Vector towards the camera
         double cosA = dot(n, l);
         vec3 r {normalize(2 * n * cosA - l)};   // Reflected vector
         double cosB = dot(r, v);
@@ -114,10 +92,9 @@ int main(int argc, char** argv) {
     TGAImage frameBuffer{width, height, TGAImage::GRAYSCALE};
     TGAImage textureImage{};
     // Iterate through all input objects
-    for(int i{1}; i < argc; i += 2) {
+    for(int i{1}; i < argc; i++) {
         Model model{argv[i]};
-        textureImage.read_tga_file(argv[i+1]);
-        PhongShader shader(light, eye, model, textureImage);
+        PhongShader shader(light, eye, model);
         render(model, shader, frameBuffer);
     }
     frameBuffer.write_tga_file("./output/framebuffer.tga");
