@@ -93,6 +93,7 @@ void rasterize(const Triangle& screen, const IShader& shader, TGAImage& frameBuf
             // Barycentric Coordinates of (x, y) w.r.t the triangle
             vec3 bc = ABC.transpose().inverse() * vec3 {static_cast<double>(x), static_cast<double>(y), 1};
             // Barycentric Coordinates being negative implies the point is outside the triangle
+            bc = bc / (bc.x + bc.y + bc.z);
             if(bc[0] < 0 || bc[1] < 0 || bc[2] < 0) continue;
 
             // Linear interpolation of depth

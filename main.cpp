@@ -30,29 +30,34 @@ struct PhongShader : IShader {
 
     std::pair<bool, TGAColor> fragment(const vec3& bar) const override {
         // Contribution of each component
-        constexpr double ambientCoeff{0.3};
+        constexpr double ambientCoeff{0.5};
         constexpr double diffuseCoeff{0.75};
         constexpr double specularCoeff{0.4};
         constexpr double alpha{35};  // shininess constant
-        constexpr double i{0.8};     // light intensity
+        constexpr double ia{0.8};    // light intensity
 
-        TGAColor glFragColor{{255, 255, 255, 255}};
         // Interpolate uv coordinates
         vec2 uv {(bar[0] * text[0] + bar[1] * text[1] + bar[2] * text[2])};
-        vec3 n {normalize(model.normal(uv) * 1024)};   // Normal vector of point
+
+        TGAColor glFragColor = model.diffuse(uv);
+        TGAColor specClr = model.specular(uv);
+
+        vec3 n {normalize(ModelView.inverse().transpose() * model.normal(uv)).xyz()};   // Normal vector of point
         vec3 l {normalize(light.xyz())};        // Vector towards the light source
         vec3 v {normalize(eye.xyz())};          // Vector towards the camera
         double cosA = dot(n, l);
         vec3 r {normalize(2 * n * cosA - l)};   // Reflected vector
         double cosB = dot(r, v);
 
-        double Ia{i * ambientCoeff};
-        double Id{i * diffuseCoeff * std::max(0.0, cosA)};
-        double Is{i * specularCoeff * std::pow(std::max(0.0, cosB), alpha)};
-        double illumination = Ia + Id + Is;
+        double Ia{ia * ambientCoeff};
+        double Id{diffuseCoeff * std::max(0.0, cosA)};
+        double Is{specularCoeff * std::pow(std::max(0.0, cosB), alpha)};
 
         for(int channel : {0, 1, 2}) {
-            glFragColor[channel] *= std::min(1.0, illumination);
+            glFragColor[channel] = std::min(
+                255.0,
+                glFragColor[channel] * (Ia + Id) + specClr[channel] * Is
+            );
         }
         return {false, glFragColor};
     }
@@ -89,7 +94,7 @@ int main(int argc, char** argv) {
     initViewport(width / 16, height / 16, width * 7/8, height * 7/8);
     initZBuffer(width, height);
 
-    TGAImage frameBuffer{width, height, TGAImage::GRAYSCALE};
+    TGAImage frameBuffer{width, height, TGAImage::RGB};
     TGAImage textureImage{};
     // Iterate through all input objects
     for(int i{1}; i < argc; i++) {

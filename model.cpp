@@ -30,8 +30,8 @@ Model::Model(const std::string& path) {
                 throw std::runtime_error("Invalid vertex format in OBJ file: " + line);
             }
         } else if(identifier == "vt") {
-            double x, y, z;
-            if(str >> x >> y >> z) {
+            double x, y;
+            if(str >> x >> y) {
                 m_vTextures.push_back({x, 1 - y});
             }
             else {
@@ -75,7 +75,9 @@ Model::Model(const std::string& path) {
     };
 
     load_texture("_nm.tga", m_normalMap);
-    std::cerr << "# v#" << numVerts() << " f#" << numFaces() << "\n";
+    load_texture("_diffuse.tga", m_diffuseMap);
+    load_texture("_spec.tga", m_specularMap);
+    std::cerr << "# v#" << numVerts() << " f#" << numFaces() << "\n\n";
 }
 
 vec4 Model::vert(const int i) const {
@@ -90,13 +92,20 @@ vec4 Model::vertNorm(const int iface, const int nthvert) const {
 vec2 Model::uv(const int iface, const int nthvert) const {
     return m_vTextures[m_facetText[iface][nthvert]];
 }
-vec3 Model::normal(const vec2& uv) const {
+vec4 Model::normal(const vec2& uv) const {
     TGAColor text = m_normalMap.get(uv.x * m_normalMap.width(), uv.y * m_normalMap.height());
-    return vec3{
+    return vec4{
         text[2] * 2.0 / 255.0 - 1,
         text[1] * 2.0 / 255.0 - 1,
-        text[0] * 2.0 / 255.0 - 1
+        text[0] * 2.0 / 255.0 - 1,
+        1
     };
+}
+TGAColor Model::diffuse(const vec2& uv) const {
+    return m_diffuseMap.get(uv.x * m_diffuseMap.width(), uv.y * m_diffuseMap.height());
+}
+TGAColor Model::specular(const vec2& uv) const {
+    return m_specularMap.get(uv.x * m_specularMap.width(), uv.y * m_specularMap.height());
 }
 
 int Model::numVerts() const {

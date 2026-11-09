@@ -11,9 +11,13 @@ struct Model {
     vec4 vert(const int iface, const int nthvert) const;
     vec4 vertNorm(const int iface, const int nthvert) const;
     vec2 uv(const int iface, const int nthvert) const;
-    vec3 normal(const vec2& uv) const ;
+    vec4 normal(const vec2& uv) const;
+    TGAColor diffuse(const vec2& uv) const;
+    TGAColor specular(const vec2& uv) const;
 private:
     TGAImage m_normalMap{};
+    TGAImage m_diffuseMap{};
+    TGAImage m_specularMap{};
 
     std::vector<vec4>  m_vertices;      // Array of vertices
     std::vector<vec4>  m_vNormals;      // Array of vertex normals
