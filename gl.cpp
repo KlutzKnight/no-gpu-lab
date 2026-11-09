@@ -11,12 +11,6 @@
 mat<4, 4> Viewport, Perspective, ModelView;     // "OpenGL" state matrices
 std::vector<double> zBuffer;                    // Depth Buffer
 
-vec3 transform(const vec3& v) {
-    vec4 per = Perspective * ModelView * vec4{v.x, v.y, v.z, 1};
-    vec4 res = Viewport * vec4{per.x / per.w, per.y / per.w, per.z / per.w, 1};
-    return {res.x, res.y, res.z};
-}
-
 void lookAt(const vec3& eye, const vec3& center, const vec3& up) {
     vec3 n = normalize(eye - center);
     vec3 l = normalize(cross(up, n));
@@ -111,4 +105,8 @@ void rasterize(const Triangle& screen, const IShader& shader, TGAImage& frameBuf
             frameBuffer.set(x, y, color);               // update the framebuffer
         }
     }
+}
+
+TGAColor IShader::sample2D(const TGAImage &img, const vec2 &uv) {
+    return img.get(uv.x * img.width(), uv.y * img.height());
 }

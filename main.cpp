@@ -2,37 +2,33 @@
 #include "gl.h"
 #include "model.h"
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 
-extern mat<4,4> ModelView;
-
-vec3 view(const vec3& v) {
-    vec4 eye = ModelView * vec4{v.x, v.y, v.z, 1};
-    return eye.xyz();
-}
+extern mat<4,4> Viewport, Perspective, ModelView;
 
 struct PhongShader : IShader {
     const Model model;
-    vec3 light;     // light position in eye coordinates
-    vec3 eye;       // camera position in eye coordinates
+    vec4 light;     // light position in eye coordinates
+    vec4 eye;       // camera position in eye coordinates
     Triangle tri;   // Triangle in eye coordinates
-    Triangle norm;  // Triangle Vertex Normals in eye coordinates
+    vec2 text[3];   // Triangle vertex textures in UV coordinates
 
     PhongShader(const vec3& l, const vec3& cam, const Model& m)
     : model{m}
     {
-        light = view(l);
-        eye = view(cam);
+        light = ModelView * vec4{l.x, l.y, l.z, 1};
+        eye = ModelView * vec4{cam.x, cam.y, cam.z, 1};
     }
-    vec3 vertex(const int face, const int vertex) {
+    vec4 vertex(const int face, const int vertex) {
         // Transform vertex from object coordinates to eye coordinates
-        tri[vertex] = view(model.vert(face, vertex));
-        vec3 n = model.vertNorm(face, vertex);
-        norm[vertex] = (ModelView.inverse().transpose() * vec4 {n.x, n.y, n.z, 1}).xyz();
-        return transform(model.vert(face, vertex)); // Return Screen Coordinates
+        tri[vertex] = ModelView * model.vert(face, vertex);
+        text[vertex] = model.uv(face, vertex);    // Scale the uv coordinates
+        vec4 vert = Perspective * tri[vertex];
+        return Viewport * vec4 {vert.x / vert.w, vert.y / vert.w, vert.z / vert.w, 1};  // Return Screen Coordinates
     }
 
-    std::pair<bool, TGAColor> fragment(const vec3& vert) const override {
+    std::pair<bool, TGAColor> fragment(const vec3& bar) const override {
         // Contribution of each component
         constexpr double ambientCoeff{0.3};
         constexpr double diffuseCoeff{0.75};
@@ -41,11 +37,13 @@ struct PhongShader : IShader {
         constexpr double i{0.8};     // light intensity
 
         TGAColor glFragColor{{255, 255, 255, 255}};
-        vec3 n {normalize(vert[0] * norm[0] + vert[1] * norm[1] + vert[2] * norm[2])};    // Normal vector of triangle
-        vec3 l {normalize(light)};     // Vector towards the light source
-        vec3 v {normalize(eye)};       // Vector towards the camera
+        // Interpolate uv coordinates
+        vec2 uv {(bar[0] * text[0] + bar[1] * text[1] + bar[2] * text[2])};
+        vec3 n {normalize(model.normal(uv) * 1024)};   // Normal vector of point
+        vec3 l {normalize(light.xyz())};        // Vector towards the light source
+        vec3 v {normalize(eye.xyz())};          // Vector towards the camera
         double cosA = dot(n, l);
-        vec3 r {normalize(2 * n * cosA - l)};          // Reflected vector
+        vec3 r {normalize(2 * n * cosA - l)};   // Reflected vector
         double cosB = dot(r, v);
 
         double Ia{i * ambientCoeff};
@@ -59,12 +57,6 @@ struct PhongShader : IShader {
         return {false, glFragColor};
     }
 };
-
-unsigned char randBit() {
-    return static_cast<unsigned char>(
-        rand()%255
-    );
-}
 
 void render(Model& model, PhongShader& shader, TGAImage& frameBuffer) {
     // Iterate through all facets
@@ -98,6 +90,7 @@ int main(int argc, char** argv) {
     initZBuffer(width, height);
 
     TGAImage frameBuffer{width, height, TGAImage::GRAYSCALE};
+    TGAImage textureImage{};
     // Iterate through all input objects
     for(int i{1}; i < argc; i++) {
         Model model{argv[i]};
