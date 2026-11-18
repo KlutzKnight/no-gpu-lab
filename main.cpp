@@ -31,7 +31,6 @@ struct PhongShader : IShader {
     std::pair<bool, TGAColor> fragment(const vec3& bar) const override {
         // Interpolate uv coordinates
         vec2 uv = (bar[0] * text[0] / w[0] + bar[1] * text[1] / w[1] + bar[2] * text[2] / w[2]) / (bar[0] / w[0] + bar[1] / w[1] + bar[2] / w[2]);
-        // vec2 uv = bar[0] * text[0] + bar[1] * text[1] + bar[2] * text[2];
 
         vec3 n {normalize((ModelView.inverse().transpose() * model.normal(uv)).xyz())};   // Normal vector of the point
         double cosA = dot(n, l);
