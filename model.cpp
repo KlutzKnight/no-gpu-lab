@@ -98,7 +98,7 @@ vec4 Model::normal(const vec2& uv) const {
         text[2] * 2.0 / 255.0 - 1,
         text[1] * 2.0 / 255.0 - 1,
         text[0] * 2.0 / 255.0 - 1,
-        1
+        0
     };
 }
 TGAColor Model::diffuse(const vec2& uv) const {
