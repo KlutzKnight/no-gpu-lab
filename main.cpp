@@ -10,10 +10,11 @@ extern mat<4,4> Viewport, Perspective, ModelView;
 
 struct PhongShader : IShader {
     const Model model;
-    vec3 l;         // light direction in eye coordinates
-    Triangle tri;   // Triangle in eye coordinates
-    vec2 text[3];   // Triangle vertex textures in UV coordinates
-    double w[3];    // Clip space w component
+    vec3 l;                 // light direction in eye coordinates
+    Triangle tri;           // Triangle in eye coordinates
+    Triangle varyingNm;    // Triangle normal in view coordinates
+    vec2 varyingUV[3];     // Triangle vertex textures in UV coordinates
+    double clipW[3];            // Clip space w component
 
     PhongShader(const vec3& light, const Model& m)
     : model{m}
@@ -22,18 +23,41 @@ struct PhongShader : IShader {
     }
     vec4 vertex(const int face, const int vertex) {
         // Transform vertex from object coordinates to eye coordinates
+        varyingUV[vertex] = model.uv(face, vertex);    // Get the uv coordinates of the fragment
+        varyingNm[vertex] = ModelView.inverse().transpose() * model.vertNorm(face, vertex);
         tri[vertex] = ModelView * model.vert(face, vertex);
-        text[vertex] = model.uv(face, vertex);    // Get the uv coordinates of the fragment
         vec4 vert = Perspective * tri[vertex];
-        w[vertex] = vert.w;
+        clipW[vertex] = vert.w;
         return Viewport * vec4 {vert.x / vert.w, vert.y / vert.w, vert.z / vert.w, 1};  // Return Screen Coordinates
     }
 
     std::pair<bool, TGAColor> fragment(const vec3& bar) const override {
+        // Interpolate the normal coordinates and normalize it
+        vec4 interpolatedNm = normalize((
+            bar[0] * varyingNm[0] / clipW[0] +
+            bar[1] * varyingNm[1] / clipW[1] +
+            bar[2] * varyingNm[2] / clipW[2]) /
+            (bar[0] / clipW[0] + bar[1] / clipW[1] + bar[2] / clipW[2]));
         // Interpolate uv coordinates
-        vec2 uv = (bar[0] * text[0] / w[0] + bar[1] * text[1] / w[1] + bar[2] * text[2] / w[2]) / (bar[0] / w[0] + bar[1] / w[1] + bar[2] / w[2]);
+        vec2 uv = (
+            bar[0] * varyingUV[0] / clipW[0] +
+            bar[1] * varyingUV[1] / clipW[1] +
+            bar[2] * varyingUV[2] / clipW[2]) /
+            (bar[0] / clipW[0] + bar[1] / clipW[1] + bar[2] / clipW[2]);
 
-        vec3 n {normalize((ModelView.inverse().transpose() * model.normal(uv)).xyz())};   // Normal vector of the point
+        mat<2, 4> E {tri[1] - tri[0], tri[2] - tri[0]};
+        mat<2, 2> U {varyingUV[1] - varyingUV[0], varyingUV[2] - varyingUV[0]};
+        if(!U.determinant()) {
+            std::cerr << "Error: Cannot invert singular matrix. Skipping...\n";
+            return {true, {}};
+        }
+        mat<2, 4> TB = U.inverse() * E;
+        // Use Gram-Schmidt Orthogonalization to make t, b and the interpolated Normal orthogonal
+        vec4 t = normalize(TB[0] - dot(TB[0], interpolatedNm) * interpolatedNm);
+        vec4 b = normalize(TB[1] - dot(TB[1], interpolatedNm) * interpolatedNm - dot(TB[1], t) * t);
+        mat<4, 4> rotateMat {t, b, interpolatedNm, {0,0,0,1}};
+
+        vec3 n {normalize((rotateMat.transpose() * model.normal(uv)).xyz())};   // Normal vector of the point
         double cosA = dot(n, l);
         vec3 r {normalize(2 * cosA * n - l)};       // Reflected vector
 

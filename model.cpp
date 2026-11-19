@@ -74,7 +74,7 @@ Model::Model(const std::string& path) {
         std::cerr << "texture file " << nmPath << " loading " << (img.read_tga_file(nmPath) ? "ok." : "failed.") << "\n";
     };
 
-    load_texture("_nm.tga", m_normalMap);
+    load_texture("_nm_tangent.tga", m_normalMap);
     load_texture("_diffuse.tga", m_diffuseMap);
     load_texture("_spec.tga", m_specularMap);
     std::cerr << "# v#" << numVerts() << " f#" << numFaces() << "\n\n";
