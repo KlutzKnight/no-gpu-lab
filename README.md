@@ -10,9 +10,10 @@ This project is my implementation of a software renderer while learning the fund
 
 - Bresenham's line drawing algorithm
 - Triangle rasterization
-- Rendering wireframes
-- Z-Buffering for depth testing
-- Loading and processing 3D models
+- Wireframe rendering
+- Z-Buffering for depth testing and hidden faces removal
+- UV texture coordinates support
+- Phong Shaders
 
 ## Technologies used
 
@@ -33,7 +34,7 @@ git clone https://github.com/KlutzKnight/no-gpu-lab.git
 cd no-gpu-lab
 ```
 
-### Build and Run
+### Compile and Build
 ```
 cmake -B build
 cmake --build build
