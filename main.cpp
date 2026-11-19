@@ -1,6 +1,7 @@
 #include "geometry.h"
 #include "gl.h"
 #include "model.h"
+#include "vec.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -36,16 +37,18 @@ struct PhongShader : IShader {
         double cosA = dot(n, l);
         vec3 r {normalize(2 * cosA * n - l)};       // Reflected vector
 
-        constexpr double ambient{0.3};
-        double diffuse{0.4 * std::max(0.0, cosA)};
-        double alpha = model.specular(uv)[0];
-        double spec = 0.9 * std::pow(std::max(0.0, r.z), alpha);
+        constexpr double ambient{0.4};
+        double diffuse{0.8 * std::max(0.0, cosA)};
+        double spec[3]{};
+        for(int channel : {0, 1, 2}) {
+            spec[channel] = 3 * model.specular(uv)[0]/255.0 * std::pow(std::max(0.0, r.z), 35);
+        }
 
         TGAColor glFragColor = model.diffuse(uv);
         for(int channel : {0, 1, 2}) {
             glFragColor[channel] = std::min(
                 255.0,
-                glFragColor[channel] * (ambient + diffuse + spec)
+                glFragColor[channel] * (ambient + diffuse + spec[channel])
             );
         }
         return {false, glFragColor};
